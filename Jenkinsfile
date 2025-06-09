@@ -8,10 +8,6 @@ pipeline {
         DOCKER_HUB_USERNAME = 'azeshion21'
         // Nama image Docker yang akan kita bangun
         DOCKER_IMAGE_NAME = "${DOCKER_HUB_USERNAME}/python-flask-app"
-        // Alamat IP atau DNS dari server deployment Anda
-        DEPLOY_SERVER = '103.187.147.44'
-        // Username untuk login ke server deployment
-        DEPLOY_USER = 'orion'
     }
 
     stages {
@@ -19,7 +15,6 @@ pipeline {
         stage('Checkout') {
             steps {
                 echo 'Checking out code...'
-                // Jenkins akan secara otomatis mengambil kode dari SCM yang dikonfigurasi
                 checkout scm
             }
         }
@@ -50,37 +45,28 @@ pipeline {
                 echo "Pushing image ${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER} to Docker Hub..."
                 sh "docker push ${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER}"
                 
-                // (Opsional) Beri juga tag 'latest' pada image yang berhasil
+                // Beri juga tag 'latest' pada image yang berhasil
                 echo "Tagging image as latest..."
                 sh "docker tag ${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER} ${DOCKER_IMAGE_NAME}:latest"
                 sh "docker push ${DOCKER_IMAGE_NAME}:latest"
             }
         }
         
-        // Tahap 5: Deploy ke Server
-        stage('Deploy to Server') {
+        // Tahap 5: Deploy Aplikasi (di Server Jenkins)
+        stage('Deploy Application') {
             steps {
-                echo "Deploying to server: ${env.DEPLOY_SERVER}"
-                // Menggunakan SSH agent untuk mengeksekusi perintah di server remote
-                sshagent(credentials: ['deploy-server-key']) {
-                    sh """
-                        ssh -o StrictHostKeyChecking=no ${env.DEPLOY_USER}@${env.DEPLOY_SERVER} << 'EOF'
-                        
-                        # Hentikan dan hapus container lama jika ada
-                        docker stop python-app || true
-                        docker rm python-app || true
-                        
-                        # Tarik image terbaru dari Docker Hub
-                        docker pull ${DOCKER_IMAGE_NAME}:latest
-                        
-                        # Jalankan container baru dengan image yang baru ditarik
-                        docker run -d --name python-app -p 80:5000 ${DOCKER_IMAGE_NAME}:latest
-                        
-                        echo "Deployment complete!"
-                        exit
-                        EOF
-                    """
-                }
+                echo "Deploying on the Jenkins server..."
+                sh """
+                    # Hentikan dan hapus container lama jika ada
+                    docker stop python-app || true
+                    docker rm python-app || true
+                    
+                    # Jalankan container baru dengan image yang baru dibuat
+                    # Tidak perlu 'pull' karena image sudah ada di server ini
+                    docker run -d --name python-app -p 80:5000 ${DOCKER_IMAGE_NAME}:latest
+                    
+                    echo "Deployment complete!"
+                """
             }
         }
     }
@@ -92,10 +78,9 @@ pipeline {
             echo 'Logging out from Docker Hub...'
             sh 'docker logout'
             
-            // Hapus image lokal untuk menghemat ruang disk di Jenkins server
+            // Hapus image lokal untuk menghemat ruang disk di server Jenkins
             echo 'Cleaning up local Docker images...'
             sh "docker rmi ${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER}"
-            sh "docker rmi ${DOCKER_IMAGE_NAME}:latest"
         }
     }
 }
